@@ -22,6 +22,8 @@ public:
     uint8_t delayTimer{ 0 };
     uint8_t soundTimer{ 0 };
 
+    std::array<uint8_t, 16> keys{};
+
     std::array<std::array<uint8_t, 64>, 32> display{};
 
      void initialize()
@@ -109,5 +111,13 @@ public:
 
          // Позже здесь можно добавить звук: 
          // if (soundTimer > 0) Beep();
+     }
+
+     void setKey(uint8_t key, bool isPressed)
+     {
+         if (key < 16)
+         {
+             keys[key] = isPressed ? 1 : 0;
+         }
      }
 };
