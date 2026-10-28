@@ -10,7 +10,6 @@ export void render(const Chip8& chip8)
     for (int y = 0; y < 32; ++y)
     {
         frame += "\033[" + std::to_string(y + 1) + ";1H";
-
         for (int x = 0; x < 64; ++x)
         {
             if (chip8.display[y][x] == 1)
@@ -19,6 +18,8 @@ export void render(const Chip8& chip8)
                 frame += "\033[40m  \033[0m";
         }
     }
+
+    frame += "\033[33;1H\033[2K";
 
     std::print("{}", frame);
 }
