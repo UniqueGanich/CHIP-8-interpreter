@@ -77,4 +77,25 @@ public:
          }
          return collision;
      }
+
+     void push(uint16_t address)
+     {
+         if (sp >= 16)
+         {
+             std::println("\033[31mОшибка: Переполнение стека!\033[0m");
+             return;
+         }
+         stack[sp] = address;
+         sp++;
+     }
+     uint16_t pop()
+     {
+         if (sp == 0)
+         {
+             std::println("\033[31mОшибка: Стек пуст!\033[0m");
+             return 0;
+         }
+         sp--;
+         return stack[sp];
+     }
 };
