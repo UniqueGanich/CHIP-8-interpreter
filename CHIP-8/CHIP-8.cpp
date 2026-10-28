@@ -25,7 +25,7 @@ public:
     std::array<std::array<uint8_t, 64>, 32> display{};
 
      void initialize()
-    {
+     {
         memory.fill(0);
         V.fill(0);
         stack.fill(0);
@@ -51,5 +51,30 @@ public:
         };
 
         std::ranges::copy(fontset, memory.begin() + 0x50);
-    }
+     }
+
+     bool drawSprite(uint8_t x, uint8_t y, uint8_t height)
+     {
+         bool collision = false;
+         uint8_t startX = x % 64;
+         uint8_t startY = y % 32;
+
+         for (int row = 0; row < height; ++row)
+         {
+             uint8_t spriteByte = memory[I + row];
+
+             for (int col = 0; col < 8; ++col)
+             {
+                 if ((spriteByte & (0x80 >> col)) != 0)
+                 {
+                     int pixelX = (startX + col) % 64;
+                     int pixelY = (startY + row) % 32;
+
+                     if (display[pixelY][pixelX] == 1) collision = true;
+                     display[pixelY][pixelX] ^= 1;
+                 }
+             }
+         }
+         return collision;
+     }
 };
