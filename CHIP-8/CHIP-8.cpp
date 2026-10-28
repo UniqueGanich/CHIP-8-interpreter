@@ -61,7 +61,7 @@ public:
 
          for (int row = 0; row < height; ++row)
          {
-             uint8_t spriteByte = memory[I + row];
+             uint8_t spriteByte = memory[I + static_cast<std::array<uint8_t, 4096Ui64>::size_type>(row)];
 
              for (int col = 0; col < 8; ++col)
              {
@@ -97,5 +97,17 @@ public:
          }
          sp--;
          return stack[sp];
+     }
+
+     void updateTimers()
+     {
+         if (delayTimer > 0)
+             delayTimer--;
+
+         if (soundTimer > 0)
+             soundTimer--;
+
+         // Позже здесь можно добавить звук: 
+         // if (soundTimer > 0) Beep();
      }
 };
