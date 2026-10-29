@@ -1,6 +1,7 @@
 module;
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <random>
 #include <string>
@@ -11,6 +12,7 @@ import std;
 export class Chip8
 {
 public:
+    // --- ДАННЫЕ И РЕГИСТРЫ ---
     std::array<uint8_t, 4096> memory{};
     std::array<uint8_t, 16> V{};
     uint16_t I{ 0 };
@@ -21,10 +23,9 @@ public:
     uint8_t soundTimer{ 0 };
     std::array<uint8_t, 16> keys{};
     std::array<std::array<uint8_t, 64>, 32> display{};
-
-    // Генератор случайных чисел для инструкции CXNN
     std::mt19937 gen{ std::random_device{}() };
 
+    // --- ИНИЦИАЛИЗАЦИЯ ---
     void initialize()
     {
         memory.fill(0);
@@ -32,6 +33,8 @@ public:
         stack.fill(0);
         display = {};
         pc = 0x200;
+        I = 0; sp = 0; delayTimer = 0; soundTimer = 0;
+        keys.fill(0);
 
         constexpr std::array<uint8_t, 80> fontset = {
             0xF0, 0x90, 0x90, 0x90, 0xF0, 0x20, 0x60, 0x20, 0x20, 0x70,
@@ -46,6 +49,7 @@ public:
         std::copy(fontset.begin(), fontset.end(), memory.begin() + 0x50);
     }
 
+    // --- ГРАФИКА (DXYN) ---
     bool drawSprite(uint8_t x, uint8_t y, uint8_t height)
     {
         bool collision = false;
@@ -54,7 +58,9 @@ public:
 
         for (int row = 0; row < height; ++row)
         {
+            if (I + row >= 4096) break;
             uint8_t spriteByte = memory[I + row];
+
             for (int col = 0; col < 8; ++col)
             {
                 if ((spriteByte & (0x80 >> col)) != 0)
@@ -62,7 +68,7 @@ public:
                     int pixelX = (startX + col) % 64;
                     int pixelY = (startY + row) % 32;
 
-                    if (display[pixelY][pixelX] == 1) collision = true;
+                    if (display[pixelY][pixelX]) collision = true;
                     display[pixelY][pixelX] ^= 1;
                 }
             }
@@ -70,17 +76,11 @@ public:
         return collision;
     }
 
-    void push(uint16_t address)
-    {
-        if (sp < 16) { stack[sp++] = address; }
-    }
+    // --- СТЕК ---
+    void push(uint16_t address) { if (sp < 16) stack[sp++] = address; }
+    uint16_t pop() { return (sp > 0) ? stack[--sp] : 0; }
 
-    uint16_t pop()
-    {
-        if (sp > 0) { return stack[--sp]; }
-        return 0;
-    }
-
+    // --- ТАЙМЕРЫ И ВВОД ---
     void updateTimers()
     {
         if (delayTimer > 0) delayTimer--;
@@ -92,19 +92,22 @@ public:
         if (key < 16) keys[key] = isPressed ? 1 : 0;
     }
 
-    bool loadRom(const std::string& filename)
+    // --- ЗАГРУЗКА ИГРЫ (filesystem::path — корректно работает с любыми путями) ---
+    bool loadRom(const std::filesystem::path& filename)
     {
         std::ifstream file(filename, std::ios::binary | std::ios::ate);
         if (!file.is_open()) return false;
 
         std::streampos size = file.tellg();
-        if (size > (4096 - 0x200)) return false;
+
+        if (size <= 0 || size > (4096 - 0x200)) return false;
 
         file.seekg(0, std::ios::beg);
         file.read(reinterpret_cast<char*>(memory.data() + 0x200), size);
         return true;
     }
 
+    // --- ЦИКЛ ПРОЦЕССОРА (FETCH-DECODE-EXECUTE) ---
     void cycle()
     {
         if (pc + 1 >= 4096) return;
@@ -136,8 +139,12 @@ public:
         case 0x2000: push(pc); pc = nnn; break;
         case 0x3000: if (V[x] == nn) pc += 2; break;
         case 0x4000: if (V[x] != nn) pc += 2; break;
-        case 0x5000: if (V[x] == V[y]) pc += 2; break;
-        case 0x9000: if (V[x] != V[y]) pc += 2; break;
+        case 0x5000:
+            if (n == 0 && V[x] == V[y]) pc += 2;
+            break;
+        case 0x9000:
+            if (n == 0 && V[x] != V[y]) pc += 2;
+            break;
 
         case 0x6000: V[x] = nn; break;
         case 0x7000: V[x] += nn; break;
@@ -161,6 +168,7 @@ public:
                 break;
             }
             case 0x6: {
+                V[x] = V[y];
                 V[0xF] = V[x] & 1;
                 V[x] >>= 1;
                 break;
@@ -171,6 +179,7 @@ public:
                 break;
             }
             case 0xE: {
+                V[x] = V[y];
                 V[0xF] = (V[x] & 0x80) >> 7;
                 V[x] <<= 1;
                 break;
@@ -179,7 +188,9 @@ public:
             break;
 
         case 0xA000: I = nnn; break;
-        case 0xB000: pc = nnn + V[0]; break;
+        case 0xB000:
+            pc = nnn + V[x];
+            break;
         case 0xC000: V[x] = (gen() % 256) & nn; break;
 
         case 0xD000: {
@@ -189,8 +200,11 @@ public:
         }
 
         case 0xE000:
-            if (nn == 0x9E) { if (keys[V[x]]) pc += 2; }
-            else if (nn == 0xA1) { if (!keys[V[x]]) pc += 2; }
+            if (V[x] < 16)
+            {
+                if (nn == 0x9E) { if (keys[V[x]]) pc += 2; }
+                else if (nn == 0xA1) { if (!keys[V[x]]) pc += 2; }
+            }
             break;
 
         case 0xF000:
@@ -207,20 +221,29 @@ public:
             }
             case 0x15: delayTimer = V[x]; break;
             case 0x18: soundTimer = V[x]; break;
-            case 0x1E: I += V[x]; break;
-            case 0x29: I = 0x50 + (V[x] * 5); break;
+            case 0x1E:
+                I += V[x];
+                break;
+            case 0x29: I = 0x50 + ((V[x] & 0xF) * 5); break;
             case 0x33: {
+                if (I + 2 >= 4096) break;
                 memory[I] = V[x] / 100;
                 memory[I + 1] = (V[x] / 10) % 10;
                 memory[I + 2] = V[x] % 10;
                 break;
             }
             case 0x55: {
-                for (int i = 0; i <= x; ++i) memory[I + i] = V[i];
+                for (int i = 0; i <= x; ++i) {
+                    if (I + i >= 4096) break;
+                    memory[I + i] = V[i];
+                }
                 break;
             }
             case 0x65: {
-                for (int i = 0; i <= x; ++i) V[i] = memory[I + i];
+                for (int i = 0; i <= x; ++i) {
+                    if (I + i >= 4096) break;
+                    V[i] = memory[I + i];
+                }
                 break;
             }
             }

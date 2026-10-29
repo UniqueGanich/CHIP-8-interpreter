@@ -1,30 +1,24 @@
 ﻿#include <Windows.h>
+#include <chrono>
+#include <thread>
 import std;
 import Emulator;
 
-// Функция для установки идеального размера окна
-static void setupConsoleSize()
+static void waitForKeyRelease(int vkCode)
 {
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-
-    // 130 колонок (128 для игры + запас) и 40 строк (36 нужно + запас)
-    SMALL_RECT windowSize = { 0, 0, 129, 39 };
-    SetConsoleWindowInfo(hOut, TRUE, &windowSize);
-
-    COORD bufferSize = { 130, 40 };
-    SetConsoleScreenBufferSize(hOut, bufferSize);
+    while (!(GetAsyncKeyState(vkCode) & 0x8000))
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    while (GetAsyncKeyState(vkCode) & 0x8000)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
 
 int main()
 {
-    // 1. Сначала выставляем размер
-    setupConsoleSize();
-
-    // 2. Включаем UTF-8
+    // 1. Включаем UTF-8
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
-    // 3. Настраиваем режимы консоли (отключаем перенос строк и включаем ANSI)
+    // 2. Настраиваем режимы консоли
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode = 0;
     GetConsoleMode(hOut, &mode);
@@ -32,18 +26,36 @@ int main()
     mode = mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     SetConsoleMode(hOut, mode);
 
-    // 4. Включаем альтернативный экран и очищаем его
-    std::print("\033[?1049h");
-    std::print("\033[?25l");
+    // 3. Очищаем обычный экран
     std::print("\033[H\033[2J\033[3J");
 
-    // 5. Запускаем
-    Emulator emulator;
-    emulator.run();
+    // 4. Предупреждение
+    std::print("\033[1;31m");
+    std::println("==================================================================");
+    std::println("                        В Н И М А Н И Е !                         ");
+    std::println("==================================================================");
+    std::println(" Для корректной работы эмулятора РАЗВЕРНИТЕ КОНСОЛЬ НА ВЕСЬ ЭКРАН!");
+    std::println(" Или уменьшите шрифт (Ctrl + колесико мыши вниз), чтобы в окно");
+    std::println(" помещалось минимум 130 символов в ширину и 36 строк в высоту.");
+    std::println("==================================================================");
+    std::print("\033[0m\n");
 
-    // 6. Возвращаем всё как было при выходе
-    std::print("\033[?1049l");
-    std::print("\033[?25h");
+    std::print(" Нажмите Enter, чтобы продолжить...");
+    waitForKeyRelease(0x0D);
 
-    return 0;
+    // 5. Запускаем эмулятор (с защитой от исключений)
+    try
+    {
+        Emulator emulator;
+        emulator.run();
+    }
+    catch (const std::exception& e)
+    {
+        // На случай если исключение вылетит до/после RAII-guard
+        std::print("\033[?1049l\033[?25h");
+        std::println("\n\033[31m[КРИТИЧЕСКАЯ ОШИБКА] {}\033[0m", e.what());
+        std::println("Нажмите Enter для выхода...");
+        waitForKeyRelease(0x0D);
+        return 1;
+    }
 }
