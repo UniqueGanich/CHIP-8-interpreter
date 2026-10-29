@@ -1,5 +1,5 @@
 # CHIP-8 Interpreter
-> A training project to create an interpreter.\
+> A training project to create an interpreter.
 
 ## English
 GAME SET\
